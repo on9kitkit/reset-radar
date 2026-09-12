@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect your harnesses · Reset Radar</title>
+<style>body{font:16px/1.65 system-ui,sans-serif;background:#101820;color:#e6edf3;max-width:850px;margin:60px auto;padding:0 25px 60px}h1,h2{line-height:1.2}h1{font-size:38px}h2{font-size:24px;margin-top:40px}p,li{color:#b8c6cf}a{color:#71e4b7}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:13px;border-bottom:1px solid #2a3843;vertical-align:top}th{color:#71e4b7}pre{padding:20px;background:#18242e;border-radius:12px;overflow:auto;font:13px/1.6 ui-monospace,monospace}code{color:#d4f5e8}.label{color:#71e4b7;font-size:12px;letter-spacing:2px}.note{border-left:3px solid #71e4b7;padding-left:18px}strong{color:#f1f7fa}</style>
+<p class="label">RESET RADAR · CONNECTION GUIDE · 4.0</p>
+<h1>Your harnesses, your accounts.</h1>
+<p>Open <strong>Connections</strong> from the expanded stack, a mascot’s Connect button, or the menu-bar paw. Each Mac uses its own local account and connection settings. The distributed app contains no account information or API key.</p>
+<table><tr><th>Harness</th><th>Connection in this release</th><th>Requirements</th></tr>
+<tr><td>Codex</td><td>Reads the signed-in local Codex account</td><td>Installed Codex app or CLI with an account that reports subscription limits</td></tr>
+<tr><td>Claude Code</td><td>Local status-line quota reader</td><td>Signed-in Claude Code with rate-limit fields available for the account</td></tr>
+<tr><td>Antigravity</td><td>Local CLI status-line quota reader</td><td>Signed-in Antigravity CLI; the editor alone does not supply this feed</td></tr>
+<tr><td>Grok, Cursor, Muse</td><td>Compatible local usage JSON file</td><td>An exporter or integration supplying actual usage; direct sign-in is not implemented</td></tr></table>
+<h2>Codex</h2>
+<p>Sign in inside Codex, then choose <strong>Refresh account</strong>. Reset Radar detects common installations in system and personal Applications folders and CLI locations. For a different installation, use <strong>Choose Codex app or CLI</strong>. CLI users can sign in using <code>codex login</code>. See the <a href="https://developers.openai.com/codex/app">official app guide</a>.</p>
+<h2>Claude Code and Antigravity CLI</h2>
+<ol><li>Install and sign in to the harness with your own account.</li><li>Select it in Reset Radar’s Connections screen and click <strong>Connect usage</strong>.</li><li>Use the harness normally. The widget reads the quota values it reports.</li></ol>
+<p>Claude Code supplies five-hour, weekly and gateway spend-limit fields when available. Subscription windows generally require Pro or Max; API-only accounts can omit them. Data appears after the first API response. Current documentation calls for Claude Code v2.1.251 or later for the rate-limit status line. See <a href="https://code.claude.com/docs/en/statusline">Claude Code’s status-line documentation</a>.</p>
+<p>Antigravity’s CLI supplies per-model quota fractions and absolute reset times through its status line. Reset Radar uses the absolute times rather than turning a cached relative duration into a moving deadline. See <a href="https://www.antigravity.google/docs/cli/statusline/">Antigravity’s status-line documentation</a>.</p>
+<p>Setup changes the selected harness’s <code>statusLine</code> command. An existing command continues to receive its input and render its output, within a three-second execution budget; other status-line options are preserved. Reset Radar saves the previous status-line configuration locally. <strong>Disconnect from widget</strong> restores it if Reset Radar still owns that setting, and preserves newer changes made by another tool.</p>
+<p>Standard locations are <code>~/.claude/settings.json</code> and <code>~/.gemini/antigravity-cli/settings.json</code>. Choose <strong>Custom settings or exporter → Choose settings file</strong> for another location. Project or managed settings can override a user status line; Reset Radar does not override a policy that disables local commands.</p>
+<h2>When quota is unavailable</h2>
+<p>Connecting a reader does not authenticate an account or create a subscription. A connection can be waiting for the harness, connected with no quota reported, stale, or unable to read its file. Use the harness to get a new report. After five minutes without one, values are marked as last reported and the compact card asks for an update. A passed reset time is never treated as proof that quota refilled.</p>
+<p>Other mascots keep their chosen colours. Only Codex’s news monitor changes between green, yellow and red.</p>
+<h2>Usage-file connections</h2>
+<p>For Grok, Cursor and Muse, select <strong>Choose usage file</strong> and link a JSON file written by a compatible exporter. Reset Radar watches the selected file every five seconds. This is a file connection, not a provider login or a built-in exporter. Cursor’s <a href="https://prod.cursor.com/help/models-and-usage/usage-limits">Spending dashboard</a> and Grok’s <a href="https://docs.x.ai/grok/faq">Usage settings</a> remain the providers’ documented places to inspect account quota.</p>
+<details><summary><strong>For integration authors: JSON format</strong></summary>
+<p>The following is illustrative data, not a real account reading. Write the provider’s actual measurement timestamp and actual available fields. <code>provider</code> must match the selected mascot: <code>claude</code>, <code>antigravity</code>, <code>grok</code>, <code>cursor</code> or <code>muse</code>.</p>
+<pre>{
+  "provider": "grok",
+  "observedAt": 1789225200,
+  "windows": [
+    {
+      "id": "weekly",
+      "name": "Weekly",
+      "remainingPercent": 75,
+      "resetsAt": 1789830000
+    }
+  ]
+}</pre>
+<ul><li>Timestamps use Unix seconds. Do not update <code>observedAt</code> until there is a new measurement.</li><li>Percentages represent remaining quota, from 0 to 100. Omit missing percentages or reset times; each window needs at least one. Use an empty windows array when quota is unavailable.</li><li>Window IDs must be unique. Names and IDs are limited to 120 characters; there may be at most 64 windows.</li><li>Optional <code>bankedResets</code> and <code>creditExpiry</code> are accepted only when your source actually supplies them.</li><li>Write atomically so the reader never sees half a document. Files are limited to 256 KB. Extra fields are ignored and never forwarded to the news API.</li><li>Exports must come from an account the user is authorized to access. Reset Radar does not collect browser cookies or bypass provider authentication.</li></ul>
+</details>
+<h2>Privacy and maintenance</h2>
+<p>The built-in readers save only quota windows, timestamps and optional reset-credit information. They do not save the status-line payload’s prompts, project paths, email addresses, transcripts or sign-in tokens. Your pre-existing status-line command still handles the same input it handled before.</p>
+<p>Reader files and restoration metadata live under <code>~/Library/Application Support/ResetRadar/connections</code>, separately for each macOS user. A small executable copy there keeps the connection working if the main app is moved. Reconnect a harness after an app update to update its reader. Users sign out in the provider’s app; disconnecting the widget does not sign out the provider.</p>
+<p>Codex news is optional and separate. Each user supplies their own OpenAI API key in Luna settings. It stays in macOS Keychain. Public news searches use GPT-5.6 Luna and the existing request limits; connecting a quota reader does not enable paid API calls.</p>
+<h2>Release status</h2>
+<p>This build includes Apple Silicon and Intel executables and targets macOS 13 or later. It is locally signed, not Apple-notarized; Developer ID signing and notarization remain necessary for a frictionless public release. Claude and Antigravity setup, parsing, status-line forwarding and restoration were tested with isolated documented-format fixtures; live subscription tests still require those accounts.</p>
+</html>
