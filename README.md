@@ -4,6 +4,10 @@
 
 A native macOS companion for coding-harness quotas and Codex surprise-reset news. Stack customisable mascots on your desktop, with the most important and largest mascot at the bottom. Click to expand available quotas, remaining percentages, routine reset times and banked reset credits. Drag to move without expanding.
 
+![Reset Radar illustration: a mint robot supports a smaller peach sun and an even smaller lilac cat, showing the highest-priority mascot at the bottom.](docs/images/hero-stack.png)
+
+*Product illustration. The largest mascot at the bottom is your highest-priority harness.*
+
 Requires macOS 13 or later. Apple Silicon and Intel builds are included in the local build process. No third-party code dependencies.
 
 ## Build and check
@@ -28,6 +32,10 @@ Run the same commands above locally. The job summary records the exact commit an
 
 ## Customise and connect
 
+![Six built-in mascot designs in vibrant colours: Robot, Sun, Comet, Orbit, Cat and Pointer.](docs/images/mascot-gallery.png)
+
+*Illustrated gallery of the built-in designs. Each harness can use any mascot; other providers keep a fixed colour.*
+
 Use the sliders button to change built-in mascot designs, colours, visibility and priority. Each higher mascot is 18% smaller. Customisation, Connections and Luna settings support scrolling and resizing; buttons show hover descriptions. Changes save automatically.
 
 | Harness | Connection |
@@ -40,6 +48,8 @@ Use the sliders button to change built-in mascot designs, colours, visibility an
 Missing quotas stay unavailable. Old reports are labelled stale. Built-in status-line setup preserves the existing command and unrelated settings; disconnect restores the previous status line where possible and keeps newer edits. Configure providers while their settings are not being edited elsewhere. Read the [connection guide](Resources/Connection%20Guide.html) for setup and the exporter format.
 
 ## Codex news
+
+![Codex news colours: mint green means no reset announced, yellow means uncertain or stale, and coral red means a reset is confirmed. These are news states, not routine reset countdowns.](docs/images/codex-news-colours.png)
 
 Only the Codex mascot changes colour:
 

@@ -11,6 +11,8 @@ allowed = {
     'Sources/main.swift', 'Resources/Info.plist', 'Resources/Connection Guide.html',
     'scripts/build.sh', 'scripts/check-source.py', 'scripts/check-package.py',
     '.github/workflows/ci.yml', '.github/dependabot.yml',
+    'docs/images/hero-stack.png', 'docs/images/mascot-gallery.png',
+    'docs/images/codex-news-colours.png',
 }
 patterns = [
     re.compile(rb'sk-[A-Za-z0-9_-]{20,}'),
