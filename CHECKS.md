@@ -21,10 +21,14 @@ The release is checked on the development Apple Silicon Mac for scrollable setti
 ## Remaining limits
 
 - Live Claude Code and Antigravity subscription accounts are not connected on this Mac; their connectors are tested with isolated documented fixtures. Cursor, Grok and Muse require compatible usage files.
-- Intel is cross-compiled, not exercised on Intel hardware. macOS 13 is the minimum compilation target; every supported OS version has not been tested.
+- The CI workflow compiles both architectures and runs offline tests on an Intel hosted runner. Interactive UI testing on Intel hardware remains outstanding. macOS 13 is the minimum compilation target; every supported OS version has not been tested.
 - Developer ID signing, notarization and clean-Mac installation remain release work. MIT is confirmed; the copyright notice is Copyright (c) 2026 on9kitkit.
 - X availability and model interpretation can fail. No checks guarantee advance notice of a surprise reset. Exact `gpt-5.6-luna` API access remains dependent on the user’s OpenAI project; the app does not substitute another model.
 - The source scan detects common credential patterns and excludes unexpected package files. It is not a comprehensive secret-discovery product or external penetration test.
 - Existing user status-line commands are trusted. Background descendants and concurrent edits by other programs are outside the connector’s transaction guarantees.
 
-This record describes the local pre-publication review. The repository contains only the reviewed source package; the surrounding working directory, local app data and generated build products are excluded. Hosted CI and public binary release work remain separate follow-up steps.
+This record describes the local pre-publication review. The repository contains only the reviewed source package; the surrounding working directory, local app data and generated build products are excluded. Hosted CI is defined in `.github/workflows/ci.yml`; its run history records execution results for each commit. Public binary release work remains separate.
+
+## Hosted automation
+
+The `Build and test` workflow checks source privacy (including tracked files), shell/plist syntax, universal compilation with active assertions, offline regressions and the final app archive. Archive checks include approved contents, matching license/guide, metadata, filename-only SHA-256, extracted signature and both architectures. It uses macOS 15 Intel with Xcode 16.4; no live credentials, paid API requests or release signing are needed. See the workflow run for a commit’s actual result rather than treating this document as a permanent passing status.

@@ -2,13 +2,15 @@
 """Fail closed on unexpected release-source files and common private-data patterns."""
 import re
 import sys
+import subprocess
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 allowed = {
     '.gitignore', 'README.md', 'LICENSE', 'SECURITY.md', 'CHECKS.md',
     'Sources/main.swift', 'Resources/Info.plist', 'Resources/Connection Guide.html',
-    'scripts/build.sh', 'scripts/check-source.py',
+    'scripts/build.sh', 'scripts/check-source.py', 'scripts/check-package.py',
+    '.github/workflows/ci.yml', '.github/dependabot.yml',
 }
 patterns = [
     re.compile(rb'sk-[A-Za-z0-9_-]{20,}'),
@@ -19,6 +21,10 @@ patterns = [
     re.compile(rb'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'),
 ]
 problems = []
+# Build output may be ignored locally, but must never enter Git's tracked tree.
+if (root / '.git').exists():
+    tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z']).decode().split('\0')
+    problems.extend(f'{name}: unexpected tracked file' for name in tracked if name and name not in allowed)
 for path in root.rglob('*'):
     relative = path.relative_to(root)
     if relative.parts[0] in {'.git', 'build'}:

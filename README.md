@@ -1,5 +1,7 @@
 # Reset Radar
 
+[![Build and test](https://github.com/on9kitkit/reset-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/on9kitkit/reset-radar/actions/workflows/ci.yml)
+
 A native macOS companion for coding-harness quotas and Codex surprise-reset news. Stack customisable mascots on your desktop, with the most important and largest mascot at the bottom. Click to expand available quotas, remaining percentages, routine reset times and banked reset credits. Drag to move without expanding.
 
 Requires macOS 13 or later. Apple Silicon and Intel builds are included in the local build process. No third-party code dependencies.
@@ -11,11 +13,18 @@ Install Xcode with its command-line tools, then run from this folder:
 ```sh
 python3 scripts/check-source.py
 bash scripts/build.sh
+python3 scripts/check-package.py
 ```
 
 The build compiles both architectures with warnings treated as errors, runs offline regression tests, locally signs the app and writes `build/Reset Radar.zip` with a SHA-256 checksum. It does not read account credentials, call paid APIs, connect a harness, install the app or modify login items. Unzip the archive and move the app to your Applications folder to run it. Add it to macOS Login Items if you want automatic startup.
 
 The signature is ad hoc. A public downloadable release still needs Developer ID signing and Apple notarization. See [the review record](CHECKS.md) for tested scope and remaining release checks.
+
+## Automated checks
+
+GitHub Actions runs on pushes to `main`, pull requests and manual dispatch. The `macOS build and offline tests` job uses the Intel macOS 15 runner with Xcode 16.4, compiles both architectures, runs the existing offline tests natively on Intel, checks source privacy and validates the extracted archive, license, checksum and signature. The workflow has read-only repository permission and a pinned checkout action. It receives no account keys or signing credentials and makes no paid API checks. Dependabot proposes weekly action updates.
+
+Run the same commands above locally. The job summary records the exact commit and toolchain. These tests do not cover interactive desktop UI, live provider accounts, notarization or Intel user-interface behaviour.
 
 ## Customise and connect
 

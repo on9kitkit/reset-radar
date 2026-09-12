@@ -1,0 +1,64 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build and offline tests
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record toolchain
+        run: |
+          xcodebuild -version
+          xcrun swiftc --version
+          python3 --version
+          {
+            printf '### Build environment\n\n'
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Runner: `%s / %s`\n\n' "$RUNNER_OS" "$RUNNER_ARCH"
+            xcodebuild -version
+            xcrun swiftc --version
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check source privacy and syntax
+        run: |
+          python3 scripts/check-source.py
+          bash -n scripts/build.sh
+          plutil -lint Resources/Info.plist
+          git diff --check
+      - name: Build universal app and run offline regression tests
+        run: bash scripts/build.sh
+      - name: Validate distributable archive
+        run: python3 scripts/check-package.py
+      - name: Confirm build leaves tracked source unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          python3 scripts/check-source.py
+      - name: Report result
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          printf '\nResult: **%s**\n' "$RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf '\nUniversal compilation; native Intel offline tests; archive checks. No live account or paid API checks.\n' >> "$GITHUB_STEP_SUMMARY"
