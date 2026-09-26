@@ -1,4 +1,4 @@
-# Review record — version 4.3
+# Review record — version 4.3.1
 
 Review date: 26 September 2026. This is a bounded engineering review, not a guarantee of zero defects.
 
@@ -44,3 +44,9 @@ This record describes the local pre-publication review. The repository contains 
 ## Hosted automation
 
 The `Build and test` workflow checks source privacy (including tracked files), shell/plist syntax, universal compilation with active assertions, offline regressions and the final app archive. Archive checks include approved contents, matching license/guide, metadata, filename-only SHA-256, extracted signature and both architectures. It uses macOS 15 Intel with Xcode 16.4; no live credentials, paid API requests or release signing are needed. See the workflow run for a commit’s actual result rather than treating this document as a permanent passing status.
+
+## Supplied discovery evidence
+
+Version 4.3.1 addresses a live finding where an explicit report from the supplied discovery feed was discarded because it was not repeated in web-tool source metadata. The review now carries the same bounded, fresh candidate snapshot through the request and response validation. Matching supplied candidates count only as indirect report evidence; they cannot establish original verification or an announced countdown.
+
+Validation: universal compilation with warnings treated as errors, the complete offline regression suite, source privacy checks and package validation passed for 4.3.1. The installed app restarted successfully. A fresh paid news check remains dependent on macOS granting the replacement binary access to the saved Keychain item.
