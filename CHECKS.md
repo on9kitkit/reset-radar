@@ -1,6 +1,12 @@
-# Review record — version 4.2
+# Review record — version 4.3
 
 Review date: 26 September 2026. This is a bounded engineering review, not a guarantee of zero defects.
+
+## Report and verification display
+
+Version 4.3 separates a reported reset from the ability to verify the original post. The UI preserves useful report text and the allowed source link, while exposing source access, freshness and check status separately. Indirect reports remain yellow; confirmed states and countdowns still require original-source evidence. Older caches remain readable without promoting ambiguous text into a new report classification.
+
+Version 4.3 validation: both architectures compiled with warnings treated as errors. The complete offline suite passed, including reported-but-blocked news, safe consulted evidence links, stale/error preservation, rumor and contradictory-state handling, required API fields and backward cache compatibility. Archive manifest, metadata, signature and architecture checks passed. This does not establish live X accessibility.
 
 ## Connection and news update
 

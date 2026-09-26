@@ -51,21 +51,25 @@ Missing quotas stay unavailable. Old reports are labelled stale. Built-in status
 
 ## Codex news
 
-![Codex news colours: mint green means no reset announced, yellow means uncertain or stale, and coral red means a reset is confirmed. These are news states, not routine reset countdowns.](docs/images/codex-news-colours.png)
+![Codex news colours: mint green means no current reset announcement found, yellow includes reported resets awaiting verification or stale news, and coral red means the original announcement was directly verified. These are news states, not routine reset countdowns.](docs/images/codex-news-colours.png)
 
 Only the Codex mascot changes colour:
 
 - Green: a successful check found no current reset announcement.
-- Yellow: news is ambiguous, indirect, unavailable or stale.
-- Red: a current reset is confirmed by the news review with original X evidence.
+- Yellow: a reset is reported but its original post has not been verified, or news is unclear, unavailable or stale.
+- Red: the news review directly verified a current explicit reset announcement with original X evidence.
 
-Colours do not count down to routine resets. The optional OpenAI news check watches `@thsottiaux`, `@reach_vb`, `@OpenAI` and `@OpenAIDevs`. The public ModelYard feed remains an indirect source for Tibo’s posts. Source links open the original X post. There is no guarantee of advance notice: providers may not announce a surprise reset, X access may fail, and model interpretation can be wrong.
+Colours do not count down to routine resets. The optional OpenAI news check watches `@thsottiaux`, `@reach_vb`, `@OpenAI` and `@OpenAIDevs`. The public ModelYard feed remains an indirect source for Tibo’s posts. There is no guarantee of advance notice: providers may not announce a surprise reset, X access may fail, and model interpretation can be wrong.
+
+The news card separates the reported claim from its verification. **Reset reported** means the review found an explicit reset claim in search results or a public mirror. **Original unavailable** means the original X post could not be read; **Original not verified** means the claim is still indirect. These reports keep their headline and source links, so a yellow card can contain useful reset news. An access block such as X HTTP 403 does not become direct verification. Only direct verification can turn the mascot red or add an announced reset time to its countdown. Public news never proves that your own account refilled.
+
+To keep hourly monitoring, open **Luna API settings…** from the menu-bar paw, leave your saved OpenAI API key in place, select **Check every → 1 hour**, enable **Enable scheduled Luna checks**, then choose **Check news now** for an immediate review. If no key is saved, enter your OpenAI key in the secure field and choose **Save key & start Luna**. No X login, X API key or new credential is required to display reported reset news. Direct verification still depends on whether the original content is accessible to the news check; this release has no authenticated X API integration.
 
 Optional Luna checks use exactly `gpt-6-luna`. Enter your own OpenAI API key inside Luna settings; the key stays in macOS Keychain. Model availability depends on your API account. There is no automatic fallback if this model or web search is unavailable. The Codex app’s model list does not establish API access. News settings show the model returned by the last API response, when supplied.
 
 News checks and web searches are billed to your OpenAI API project. The default interval is 30 minutes, configurable to 60 or 120 minutes. The app allows at most 48 attempts per UTC day, up to six web-tool calls and 3,000 output tokens per request. Manual checks share the cap and a one-minute cooldown. These local caps are not a billing guarantee; set project spending controls in your OpenAI account as well.
 
-Only public news queries, candidate titles and URLs go to OpenAI. Personal harness quotas stay local. API response storage is disabled in the request. A returned search citation alone cannot create a red state or announced countdown: the response must record opening the original allowed X post and classify the evidence as direct. This is a conservative model-assisted check, not independent proof of the post content or a refill on your own account. The card explains whether yellow means an unverified report, a failed check, paused monitoring, a missing API key or stale news. A successful no-announcement result requires a completed search with a recorded source from a monitored account. Cached news becomes uncertain after two hours. A confirmed completed reset remains relevant for 24 hours.
+Only public news queries, candidate titles and URLs go to OpenAI. Personal harness quotas stay local. API response storage is disabled in the request. A returned search citation alone cannot create a red state or announced countdown: the response must record opening the original allowed X post and classify the evidence as direct. This is a conservative model-assisted check, not independent proof of the post content. The card keeps reported news separate from unavailable verification, a failed check, paused monitoring, a missing API key or stale news. A successful no-announcement result requires a completed search with a recorded source from a monitored account. Cached reviews are marked stale after two hours. A directly verified completed reset is considered current news for 24 hours, but its review must still be fresh to turn the mascot red.
 
 The Mac must be awake and the app running. Codex quotas refresh every minute, the indirect feed every five minutes and connected usage files every five seconds. No cloud monitor is included.
 
