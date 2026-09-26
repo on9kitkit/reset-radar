@@ -1,6 +1,12 @@
-# Review record — version 4.1
+# Review record — version 4.2
 
-Review date: 12 September 2026. This is a bounded engineering review, not a guarantee of zero defects.
+Review date: 26 September 2026. This is a bounded engineering review, not a guarantee of zero defects.
+
+## Connection and news update
+
+Version 4.2 adds current ChatGPT-bundled Codex discovery, saved working-installation recovery, account-type and connection-error guidance, local-reader repair, GPT-6 Luna, and monitoring for @reach_vb plus the official OpenAI accounts. Yellow news now exposes its cause and a retry path. API checks allow six web-tool calls and 3,000 output tokens so a search can be followed by original-source checks. Indirect reset reports still cannot create confirmed states or countdowns.
+
+Local validation on 26 September: the universal build and offline regression suite passed under Xcode 27 / Swift 6.4. Archive signature, metadata and both architectures passed package checks. The rebuilt app read the signed-in Codex account successfully without logging identity or balances, and the installed companion displayed current quota after restart. Live news model verification may require macOS Keychain approval after replacing an ad-hoc signed binary.
 
 ## Automated checks
 
@@ -23,7 +29,7 @@ The release is checked on the development Apple Silicon Mac for scrollable setti
 - Live Claude Code and Antigravity subscription accounts are not connected on this Mac; their connectors are tested with isolated documented fixtures. Cursor, Grok and Muse require compatible usage files.
 - The CI workflow compiles both architectures and runs offline tests on an Intel hosted runner. Interactive UI testing on Intel hardware remains outstanding. macOS 13 is the minimum compilation target; every supported OS version has not been tested.
 - Developer ID signing, notarization and clean-Mac installation remain release work. MIT is confirmed; the copyright notice is Copyright (c) 2026 on9kitkit.
-- X availability and model interpretation can fail. No checks guarantee advance notice of a surprise reset. Exact `gpt-5.6-luna` API access remains dependent on the user’s OpenAI project; the app does not substitute another model.
+- X availability and model interpretation can fail. No checks guarantee advance notice of a surprise reset. Exact `gpt-6-luna` API access remains dependent on the user’s OpenAI project; the app does not substitute another model.
 - The source scan detects common credential patterns and excludes unexpected package files. It is not a comprehensive secret-discovery product or external penetration test.
 - Existing user status-line commands are trusted. Background descendants and concurrent edits by other programs are outside the connector’s transaction guarantees.
 

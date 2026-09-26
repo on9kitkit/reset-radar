@@ -40,10 +40,12 @@ Use the sliders button to change built-in mascot designs, colours, visibility an
 
 | Harness | Connection |
 | --- | --- |
-| Codex | Reads the signed-in local Codex account, including available limits and reset credits. A custom app/CLI location can be selected. |
+| Codex | Automatically finds the Codex CLI bundled in Codex or ChatGPT, or a standalone installation. Reads your existing signed-in account, available limits and reset credits. |
 | Claude Code | Installs a local status-line quota reader after you sign in inside Claude Code. |
 | Antigravity CLI | Installs a local status-line quota reader; this does not connect the editor alone. |
 | Cursor, Grok, Muse | Reads a compatible usage JSON file. Native sign-in and built-in exporters are not implemented. |
+
+For Codex, start with **Connect account**; sign in or switch accounts inside Codex itself. **Connection options → Find Codex again** repairs a moved or changed installation. The screen shows the detected app and last quota report. Claude and Antigravity offer **Reconnect usage** to repair their local readers.
 
 Missing quotas stay unavailable. Old reports are labelled stale. Built-in status-line setup preserves the existing command and unrelated settings; disconnect restores the previous status line where possible and keeps newer edits. Configure providers while their settings are not being edited elsewhere. Read the [connection guide](Resources/Connection%20Guide.html) for setup and the exporter format.
 
@@ -57,13 +59,13 @@ Only the Codex mascot changes colour:
 - Yellow: news is ambiguous, indirect, unavailable or stale.
 - Red: a current reset is confirmed by the news review with original X evidence.
 
-Colours do not count down to routine resets. The app watches Tibo, `@thsottiaux`, through an indirect public ModelYard feed and optional OpenAI API news checks. Source links open the original X post. There is no guarantee of advance notice: providers may not announce a surprise reset, X access may fail, and model interpretation can be wrong.
+Colours do not count down to routine resets. The optional OpenAI news check watches `@thsottiaux`, `@reach_vb`, `@OpenAI` and `@OpenAIDevs`. The public ModelYard feed remains an indirect source for Tibo’s posts. Source links open the original X post. There is no guarantee of advance notice: providers may not announce a surprise reset, X access may fail, and model interpretation can be wrong.
 
-Optional Luna checks use exactly `gpt-5.6-luna`. Enter your own OpenAI API key inside Luna settings; the key stays in macOS Keychain. Model availability depends on your API account. There is no automatic fallback if this model or web search is unavailable. The Codex app’s model list does not establish API access.
+Optional Luna checks use exactly `gpt-6-luna`. Enter your own OpenAI API key inside Luna settings; the key stays in macOS Keychain. Model availability depends on your API account. There is no automatic fallback if this model or web search is unavailable. The Codex app’s model list does not establish API access. News settings show the model returned by the last API response, when supplied.
 
-News checks and web searches are billed to your OpenAI API project. The default interval is 30 minutes, configurable to 60 or 120 minutes. The app allows at most 48 attempts per UTC day, up to two web-tool calls and 2,000 output tokens per request. Manual checks share the cap and a one-minute cooldown. These local caps are not a billing guarantee; set project spending controls in your OpenAI account as well.
+News checks and web searches are billed to your OpenAI API project. The default interval is 30 minutes, configurable to 60 or 120 minutes. The app allows at most 48 attempts per UTC day, up to six web-tool calls and 3,000 output tokens per request. Manual checks share the cap and a one-minute cooldown. These local caps are not a billing guarantee; set project spending controls in your OpenAI account as well.
 
-Only public news queries, candidate titles and URLs go to OpenAI. Personal harness quotas stay local. API response storage is disabled in the request. A returned search citation alone cannot create a red state or announced countdown: the response must record opening the original allowed X post and classify the evidence as direct. This is a conservative model-assisted check, not independent proof of the post content or a refill on your own account. Cached news becomes uncertain after two hours. A confirmed completed reset remains relevant for 24 hours.
+Only public news queries, candidate titles and URLs go to OpenAI. Personal harness quotas stay local. API response storage is disabled in the request. A returned search citation alone cannot create a red state or announced countdown: the response must record opening the original allowed X post and classify the evidence as direct. This is a conservative model-assisted check, not independent proof of the post content or a refill on your own account. The card explains whether yellow means an unverified report, a failed check, paused monitoring, a missing API key or stale news. A successful no-announcement result requires a completed search with a recorded source from a monitored account. Cached news becomes uncertain after two hours. A confirmed completed reset remains relevant for 24 hours.
 
 The Mac must be awake and the app running. Codex quotas refresh every minute, the indirect feed every five minutes and connected usage files every five seconds. No cloud monitor is included.
 
