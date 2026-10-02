@@ -1,4 +1,4 @@
-# Review record — version 4.5
+# Review record — version 4.6
 
 Review date: 2 October 2026. This is a bounded engineering review, not a guarantee of zero defects.
 
@@ -66,3 +66,11 @@ Version 4.5 adds direct app-only X timeline reads and a secure Keychain token fi
 Offline fixtures cover full and empty coverage, pagination, missing/partial account data, author binding, long-form text, malformed and truncated responses, field-name compatibility, rate limits, daily reservations and UTC rollover, cancellation, retry snapshot reuse, source/quote matching, ambiguous wording, invented timing and cache provenance. No live X token is available during this review; actual app entitlement, credits and end-to-end X access must be verified after the user saves their token. No X API call or purchase is made by the build or test suite.
 
 Version 4.5 local validation: Apple Silicon and Intel builds with warnings treated as errors, the complete offline suite, source privacy scan, whitespace checks and package signature/manifest checks passed. A separate reviewer’s harness and seven additional adversarial wording/timing fixtures passed. The live X connection remains unverified until the user supplies their own token. Hosted CI results belong to the matching commit’s run history.
+
+## Recent web-search coverage
+
+Version 4.6 separates completed recent account searches from original-page access. The web checker requests four exact account-specific queries over a bounded UTC date window; coverage comes from actual completed search-call metadata. A completed empty or historical result set can support a green **No reset found in search** result without requiring an unrelated recent post. Missing, failed or error-page-only searches cannot. A historical original returning 403 no longer invalidates independent successful searches. Current explicit claims and ambiguous news still require their existing reported/verified handling; search alone cannot turn a reset red or establish an announced countdown.
+
+The version 6 cache requires consistent no-announcement classification, a complete client-generated receipt set, matching backend and request time, and no contradictory current explicit-claim observation. Legacy web no-announcement caches require a fresh review. Green is limited to returned search results; it does not guarantee complete indexing of X posts.
+
+Version 4.6 final validation on 2 October 2026: both architectures compiled with warnings treated as errors; the complete offline suite, source privacy scan, whitespace checks and archive signature/manifest checks passed. An independent review passed 23 additional cases and reviewed five final malformed-status/query regression fixtures. The installed widget completed a live Codex-plan check with GPT-6 Luna requested, recorded the exact recent queries for all four accounts and displayed green **No reset found in search** with **Search checked** in both settings and the compact companion. The CLI did not supply separate actual-model metadata; the UI identifies the requested model accordingly. No OpenAI API or X API call was made for this live check. Hourly plan monitoring remains enabled. Hosted CI belongs to the matching pushed commit’s workflow history.

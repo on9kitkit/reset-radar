@@ -55,7 +55,7 @@ Missing quotas stay unavailable. Old reports are labelled stale. Built-in status
 
 Only the Codex mascot changes colour:
 
-- Green: a successful check found no current reset announcement.
+- Green: a successful check found no current reset announcement in the checked search results or returned post text.
 - Yellow: a reset is reported but its original post has not been verified, or news is unclear, unavailable or stale.
 - Red: the news review directly verified a current explicit reset announcement with original X evidence.
 
@@ -83,6 +83,10 @@ The app distinguishes rejected tokens, unavailable access/credits, provider rate
 ### Other news checkers
 
 **Codex · web search only** uses the existing ChatGPT sign-in in the installed Codex CLI and counts toward your plan usage. It needs no separate API key and never falls back to paid API requests. Web search may still fail to read original X pages. Settings identify the requested CLI model and, when returned by an API review, the actual response model.
+
+The checker requests four account-specific searches with explicit UTC date bounds covering the previous two days and today. The app records the actual completed search queries, rather than trusting the model to claim that every account was checked. When all four recent searches complete and their results contain no current reset announcement, the card can show **No reset found in search** with a **Search checked** badge, even if a historical original post returns HTTP 403. Empty or historical results do not require an unrelated current post to establish this limited search result. Missing queries, failed searches, error-page-only results, conflicting current claims and ambiguous news remain yellow. A fresh check is required; older blocked reviews are never automatically turned green.
+
+This green state describes returned search results, not complete X timeline coverage. Search indexing can miss or delay posts. Explicit reset reports still keep their source links and remain yellow until the original is directly verified; only a verified original can produce red or an announced reset countdown.
 
 The optional **OpenAI API · billed separately** checker uses exactly `gpt-6-luna` with hosted web search. Its key stays in macOS Keychain; model and search access depend on your API project. No other model is silently substituted.
 
