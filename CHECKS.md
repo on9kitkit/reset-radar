@@ -1,6 +1,6 @@
-# Review record — version 4.3.1
+# Review record — version 4.4
 
-Review date: 26 September 2026. This is a bounded engineering review, not a guarantee of zero defects.
+Review date: 2 October 2026. This is a bounded engineering review, not a guarantee of zero defects.
 
 ## Report and verification display
 
@@ -50,3 +50,11 @@ The `Build and test` workflow checks source privacy (including tracked files), s
 Version 4.3.1 addresses a live finding where an explicit report from the supplied discovery feed was discarded because it was not repeated in web-tool source metadata. The review now carries the same bounded, fresh candidate snapshot through the request and response validation. Matching supplied candidates count only as indirect report evidence; they cannot establish original verification or an announced countdown.
 
 Validation: universal compilation with warnings treated as errors, the complete offline regression suite, source privacy checks and package validation passed for 4.3.1. The installed app restarted successfully. A fresh paid news check remains dependent on macOS granting the replacement binary access to the saved Keychain item.
+
+## Plan-based news checker
+
+Version 4.4 adds a Codex CLI news checker using the existing ChatGPT sign-in, preserving the optional separately billed OpenAI API checker. The timeout investigation found that web-search reviews could exceed the previous 90–100 second request window, after which the next attempt waited the full hourly interval. The new scheduler bounds transient retries, keeps the last successful review and makes the next retry visible. Paid API fallback is never automatic.
+
+The installed CLI was tested with GPT-6 Luna, live web search and a blocked original X post. Its recorded web results allow source validation; a guessed source URL or an error page is not evidence of a directly verified reset. Final release validation is recorded below after the integrated build.
+
+Version 4.4 final validation on 2 October 2026: both architectures compiled with warnings treated as errors; the complete offline suite, archive signature/metadata/architecture checks, source privacy scan and whitespace checks passed. Twelve additional independent adversarial fixtures passed. The installed widget completed a live GPT-6 Luna Codex-plan check using its existing sign-in, without API Keychain access. That check returned uncertainty because X blocked original posts and accessible search results did not establish current evidence; no confirmed state or reset time was fabricated. Hourly plan monitoring was enabled. Hosted CI is recorded in the pushed commit’s workflow history.
