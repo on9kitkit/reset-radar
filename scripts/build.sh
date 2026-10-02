@@ -10,7 +10,7 @@ cd "$project_dir"
 for cpu in arm64 x86_64; do
   xcrun swiftc -warnings-as-errors -target "$cpu-apple-macos13.0" \
     -module-cache-path "$temp_dir/cache-$cpu" \
-    Sources/main.swift -o "$temp_dir/ResetRadar-$cpu" \
+    Sources/main.swift Sources/XNews.swift Sources/XReview.swift -o "$temp_dir/ResetRadar-$cpu" \
     -framework Cocoa -framework SwiftUI -framework Security
 done
 app_dir="$temp_dir/Reset Radar.app"

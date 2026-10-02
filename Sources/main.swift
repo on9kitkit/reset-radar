@@ -30,6 +30,8 @@ struct Verified: Codable {
     var backendName:String? = nil
     var requestedModel:String? = nil
     var evidenceObservations:[NewsEvidenceObservation]? = nil
+    var xCoverage:XNewsCoverage? = nil
+    var originalExcerpt:String? = nil
     func isFresh(_ now:Date) -> Bool { checkedAt.isFinite && checkedAt <= now.timeIntervalSince1970+60 && now.timeIntervalSince1970-checkedAt < 7200 }
     // Old ambiguous reviews did not distinguish a reported claim from failed verification.
     // Preserve their headline without guessing a classification from its wording.
@@ -41,14 +43,14 @@ struct Verified: Codable {
     }
     var hasVerifiedReset:Bool {
         reportClassification == "reported" && status == "directly verified" && resetState == "confirmed" &&
-        [2,3,4].contains(evidenceVersion ?? 0) && sourceURL.flatMap(validX) != nil
+        [2,3,4,5].contains(evidenceVersion ?? 0) && sourceURL.flatMap(validX) != nil
     }
     var verificationBadge:String {
         switch status {
         case "directly verified":return hasVerifiedReset ? "Original verified" : "Original reviewed"
         case "indirect report":return "Original not verified"
-        case "verification unavailable":return "Original unavailable"
-        default:return "Search completed"
+        case "verification unavailable":return evidenceVersion == 5 ? "X originals read" : "Original unavailable"
+        default:return backendName == NewsBackend.xAPI.rawValue ? "X timelines checked" : "Search completed"
         }
     }
     var reviewLabel:String {
@@ -70,28 +72,34 @@ struct Verified: Codable {
               value.requestedModel == nil || LunaAPI.validModelName(value.requestedModel!),
               value.backendName == nil || NewsBackend(rawValue:value.backendName!) != nil,
               (value.evidenceObservations?.count ?? 0) <= 10,
+              (value.originalExcerpt?.count ?? 0) <= 500,
               value.scheduledAt == nil || SharedQuotaSnapshot.validTime(value.scheduledAt!),
               value.resetState == nil || ["none","ambiguous","confirmed"].contains(value.resetState!),
               value.reportState == nil || ["reported","none","unclear"].contains(value.reportState!),
               (value.reportSourceURLs?.count ?? 0) <= 5 else { throw ConnectionFailure("Invalid news cache") }
         value.reportSourceURLs = value.reportSourceURLs?.compactMap { LunaAPI.reportSourceURL($0)?.absoluteString }
-        if value.status == "directly verified",value.evidenceVersion != 4 {
+        if value.evidenceVersion == 5 {
+            guard value.backendName == NewsBackend.xAPI.rawValue,let coverage = value.xCoverage,coverage.valid,
+                  value.checkedAt >= coverage.fetchedAt,value.checkedAt-coverage.fetchedAt <= 600,
+                  value.status != "directly verified" || (value.originalExcerpt?.count ?? 0) >= 10 else { throw ConnectionFailure("Invalid X news coverage") }
+        }
+        if value.status == "directly verified",![4,5].contains(value.evidenceVersion ?? 0) {
             value.status = "indirect report"; value.resetState = "ambiguous"; value.scheduledAt = nil
             value.timingNote = "Waiting for a fresh review of the original X post."
         }
         if value.evidenceVersion == 3,value.reportState == nil { value.status = "verification unavailable"; value.resetState = "ambiguous"; value.scheduledAt = nil }
         if value.reportState == "none",value.status != "no scheduled reset" || value.resetState != "none" { value.reportState = "unclear"; value.resetState = "ambiguous" }
         if value.reportState == "reported",value.status == "no scheduled reset" { value.status = "indirect report"; value.resetState = "ambiguous" }
-        if value.evidenceVersion != 4,value.reportClassification == "none" {
+        if ![4,5].contains(value.evidenceVersion ?? 0),value.reportClassification == "none" {
             value.status = "verification unavailable"; value.reportState = "unclear"; value.resetState = "ambiguous"
             value.timingNote = "This earlier search needs a fresh review with accessible current-source evidence."
         }
-        if value.evidenceVersion == 4 {
+        if [4,5].contains(value.evidenceVersion ?? 0) {
             let observations = (value.evidenceObservations ?? []).filter { $0.valid }
             value.evidenceObservations = observations
             let direct = observations.contains { $0.sourceURL == value.sourceURL && $0.access == "readable" && $0.current && $0.explicitResetClaim }
             if value.status == "directly verified",!direct { value.status = "indirect report"; value.resetState = "ambiguous" }
-            if value.reportClassification == "none",!observations.contains(where:{ $0.access == "readable" && $0.current && LunaAPI.isAllowedDiscoverySource($0.sourceURL) }) { value.status = "verification unavailable"; value.reportState = "unclear"; value.resetState = "ambiguous" }
+            if value.reportClassification == "none",value.evidenceVersion != 5,!observations.contains(where:{ $0.access == "readable" && $0.current && LunaAPI.isAllowedDiscoverySource($0.sourceURL) }) { value.status = "verification unavailable"; value.reportState = "unclear"; value.resetState = "ambiguous" }
         }
         if !value.hasVerifiedReset { value.scheduledAt = nil }
         return value
@@ -214,6 +222,8 @@ final class Radar: ObservableObject {
     private var newsRetryWork:DispatchWorkItem?
     @Published var keychainBusy = true
     private var lunaKey: String?
+    private var xToken:String?
+    var xNewsOperation:XNewsOperation?
     private let keychainQueue = DispatchQueue(label:"local.resetradar.keychain",qos:.utility)
     var lunaTask: SafeNetwork?
     var lunaGeneration = 0
@@ -228,6 +238,7 @@ final class Radar: ObservableObject {
         updateNewsReadiness()
         keychainBusy = false
         if newsBackend == .openAIAPI { loadSavedAPIKey() }
+        if newsBackend == .xAPI { loadSavedXToken() }
         loadVerified(); refresh()
         DispatchQueue.main.asyncAfter(deadline:.now()+5) { [weak self] in self?.checkLuna() }
         timer = Timer.scheduledTimer(withTimeInterval:1, repeats:true) { [weak self] _ in
@@ -408,6 +419,7 @@ struct RadarView: View {
                             Text(v.headline).font(.system(size:13,weight:.semibold))
                             if model.mood == .red, v.hasVerifiedReset, let t = v.scheduledAt { Text(countdown(Date(timeIntervalSince1970:t),model.now)).font(.title2.monospacedDigit()); Text(dateLabel(Date(timeIntervalSince1970:t))).font(.caption) }
                             Text(v.timingNote).font(.caption).foregroundColor(.secondary)
+                            if let quote = v.originalExcerpt { Text("“"+quote+"”").font(.caption).textSelection(.enabled) }
                             if let s = v.sourceURL, let url = validX(s) { Link("Original post on X ↗",destination:url).help("Open the original X post for this news review").font(.caption) }
                             ForEach(Array(Set(v.reportSourceURLs ?? [])).sorted(),id:\.self) { source in
                                 if source != v.sourceURL,let url = LunaAPI.reportSourceURL(source) {
@@ -463,11 +475,17 @@ enum RadarKeychain {
     }
 }
 enum NewsBackend:String,CaseIterable {
-    case codexPlan,openAIAPI
-    var label:String { self == .codexPlan ? "Codex · ChatGPT plan" : "OpenAI API · gpt-6-luna" }
+    case codexPlan,openAIAPI,xAPI
+    var label:String {
+        switch self {
+        case .codexPlan:return "Codex · ChatGPT plan"
+        case .openAIAPI:return "OpenAI API · gpt-6-luna"
+        case .xAPI:return "X API + Codex plan"
+        }
+    }
 }
 struct NewsCheckFailure:LocalizedError {
-    enum Kind:String { case missing,signIn,quota,network,timeout,incompatible,invalidResponse,sourceUnavailable,cancelled,apiKey,apiAccess,dailyCap }
+    enum Kind:String { case missing,signIn,quota,network,timeout,incompatible,invalidResponse,sourceUnavailable,cancelled,apiKey,apiAccess,dailyCap,xRateLimit,xAccess,xToken,xBudget }
     let kind:Kind
     let message:String
     var retryAt:Date? = nil
@@ -556,7 +574,7 @@ final class NewsCLIProcess:@unchecked Sendable {
             lock.lock(); process = nil; processGroup = nil; lock.unlock()
         }
         func send(_ value:[String:Any]) throws { var data = try JSONSerialization.data(withJSONObject:value); data.append(10); try input.fileHandleForWriting.write(contentsOf:data) }
-        try send(["id":1,"method":"initialize","params":["clientInfo":["name":"reset_radar_news","version":"4.4"]]])
+        try send(["id":1,"method":"initialize","params":["clientInfo":["name":"reset_radar_news","version":"4.5"]]])
         var buffer = Data(),received = 0; var results = [Int:[String:Any]]()
         while true {
             let chunk = output.fileHandleForReading.availableData; if chunk.isEmpty { break }
@@ -678,9 +696,9 @@ enum CodexNews {
     static func disabledServers(_ names:[String],placeholder:Bool = false)->[String] {
         names.flatMap { name in ["mcp_servers.\(name).enabled=false"]+(placeholder ? ["mcp_servers.\(name).command=\"/usr/bin/false\""] : []) }
     }
-    static func validateConfiguration(_ response:[String:Any],requirements:[String:Any]?,requireDisabled:Bool) throws -> [String] {
+    static func validateConfiguration(_ response:[String:Any],requirements:[String:Any]?,requireDisabled:Bool,webSearch:Bool = true) throws -> [String] {
         guard let config = response["config"] as? [String:Any],config["model_provider"] as? String == "openai",config["forced_login_method"] as? String == "chatgpt",
-              config["approval_policy"] as? String == "never",config["sandbox_mode"] as? String == "read-only",config["web_search"] as? String == "live",
+              config["approval_policy"] as? String == "never",config["sandbox_mode"] as? String == "read-only",config["web_search"] as? String == (webSearch ? "live" : "disabled"),
               let features = config["features"] as? [String:Any] else { throw isolationFailure }
         for name in restrictedFeatures { guard features[name] as? Bool == false else { throw isolationFailure } }
         for name in ["instructions","developer_instructions","model_instructions_file"] {
@@ -702,22 +720,25 @@ enum CodexNews {
         }
         return servers.keys.sorted()
     }
-    static func isolatedServers(executable:String,directory:URL,operation:NewsCLIProcess) throws -> [String] {
+    static func isolatedServers(executable:String,directory:URL,operation:NewsCLIProcess,webSearch:Bool = true) throws -> [String] {
         try checkGlobalInstructions(environment:environment(directory:directory))
         let methods:[[String:Any]] = [
             ["method":"config/read","params":["includeLayers":true,"cwd":directory.path]],
             ["method":"configRequirements/read"]
         ]
-        let first = try operation.control(executable:executable,arguments:restrictedConfiguration.flatMap { ["-c",$0] }+["app-server","--stdio"],directory:directory,requests:methods)
-        let names = try validateConfiguration(first[0],requirements:first[1]["requirements"] as? [String:Any],requireDisabled:false)
-        let second = try operation.control(executable:executable,arguments:(restrictedConfiguration+disabledServers(names)).flatMap { ["-c",$0] }+["app-server","--stdio"],directory:directory,requests:methods)
-        let checkedNames = try validateConfiguration(second[0],requirements:second[1]["requirements"] as? [String:Any],requireDisabled:true)
+        let first = try operation.control(executable:executable,arguments:configuration(webSearch:webSearch).flatMap { ["-c",$0] }+["app-server","--stdio"],directory:directory,requests:methods)
+        let names = try validateConfiguration(first[0],requirements:first[1]["requirements"] as? [String:Any],requireDisabled:false,webSearch:webSearch)
+        let second = try operation.control(executable:executable,arguments:(configuration(webSearch:webSearch)+disabledServers(names)).flatMap { ["-c",$0] }+["app-server","--stdio"],directory:directory,requests:methods)
+        let checkedNames = try validateConfiguration(second[0],requirements:second[1]["requirements"] as? [String:Any],requireDisabled:true,webSearch:webSearch)
         guard Set(checkedNames) == Set(names) else { throw isolationFailure }
         try checkGlobalInstructions(environment:environment(directory:directory))
         return names
     }
-    static func arguments(directory:URL,disabledMCP:[String] = [])->[String] {
-        return ["--search"]+(restrictedConfiguration+disabledServers(disabledMCP,placeholder:true)).flatMap { ["-c",$0] }+[
+    static func configuration(webSearch:Bool)->[String] {
+        restrictedConfiguration.map { $0 == "web_search=\"live\"" && !webSearch ? "web_search=\"disabled\"" : $0 }
+    }
+    static func arguments(directory:URL,disabledMCP:[String] = [],webSearch:Bool = true)->[String] {
+        return (webSearch ? ["--search"] : [])+(configuration(webSearch:webSearch)+disabledServers(disabledMCP,placeholder:true)).flatMap { ["-c",$0] }+[
             "exec","--ignore-user-config","--model",model,"--sandbox","read-only","--skip-git-repo-check","--ephemeral","--json",
             "--output-schema",directory.appendingPathComponent("schema.json").path,
             "--output-last-message",directory.appendingPathComponent("finding.json").path,"-"
@@ -727,7 +748,7 @@ enum CodexNews {
         let request = LunaAPI.request(discovery:discovery)
         return (request["instructions"] as? String ?? "")+"\n"+(request["input"] as? String ?? "")+"\nUse live web search and original-post opens only. Do not use any shell, filesystem, app, plug-in, browser or computer tools. Return only the requested JSON. Evidence observations must describe content actually returned by a successful tool call in this run. A completed open with Internal Error, one error line, a sign-in page or no post text is blocked/unavailable, never readable. Each readable/current observation must cite its exact returned source URL. Do not invent a status URL or infer publication/reset time. Original content must explicitly make a current reset claim before explicitResetClaim is true. A monitored account's current accessible search snippet may establish an indirect report, and a current accessible account/post search result may support a successful no-announcement review. Never use supplied RSS evidence as an observation of original content. Search all four monitored accounts, use at most six web calls, and reserve an open for any original proposed as directly verified.\n"
     }
-    static func review(executable:String,discovery:NewsDiscoverySnapshot,operation:NewsCLIProcess,timeout:TimeInterval = 240,preflight:Bool = true) throws -> Verified {
+    static func review(executable:String,discovery:NewsDiscoverySnapshot,operation:NewsCLIProcess,timeout:TimeInterval = 240,preflight:Bool = true,xSource:(() throws -> XNewsSnapshot)? = nil) throws -> Verified {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ResetRadar-news-"+UUID().uuidString,isDirectory:true)
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
         defer { try? FileManager.default.removeItem(at:directory) }
@@ -751,15 +772,17 @@ enum CodexNews {
             }
             if exhausted { throw NewsCheckFailure(kind:.quota,message:"Your ChatGPT plan quota is exhausted. News checks resume after the account reset; open Codex to see your limits.",retryAt:exhaustedResets.max()?.addingTimeInterval(5)) }
         }
-        let disabledMCP = preflight ? try isolatedServers(executable:executable,directory:directory,operation:operation) : []
-        let request = LunaAPI.request(discovery:discovery)
+        let disabledMCP = preflight ? try isolatedServers(executable:executable,directory:directory,operation:operation,webSearch:xSource == nil) : []
+        let snapshot = try xSource?()
+        let request = snapshot.map { XNewsReview.request(snapshot:$0) } ?? LunaAPI.request(discovery:discovery)
         let format = ((request["text"] as? [String:Any])?["format"] as? [String:Any]) ?? [:]
         guard let schema = format["schema"] as? [String:Any] else { throw NewsCheckFailure(kind:.invalidResponse,message:"The news request could not be prepared.") }
         try HarnessBridge.writePrivate(JSONSerialization.data(withJSONObject:schema),to:directory.appendingPathComponent("schema.json"))
-        let result = try operation.run(executable:executable,arguments:arguments(directory:directory,disabledMCP:disabledMCP),prompt:prompt(discovery:discovery),directory:directory,timeout:timeout,monitoredOutput:directory.appendingPathComponent("finding.json"))
+        let result = try operation.run(executable:executable,arguments:arguments(directory:directory,disabledMCP:disabledMCP,webSearch:snapshot == nil),prompt:snapshot.map { XNewsReview.prompt(snapshot:$0) } ?? prompt(discovery:discovery),directory:directory,timeout:timeout,monitoredOutput:directory.appendingPathComponent("finding.json"))
         guard result.2 == 0 else { throw NewsCheckFailure.cli(String(data:result.0+result.1,encoding:.utf8) ?? "",exitCode:result.2) }
         let findingURL = directory.appendingPathComponent("finding.json"); var findingInfo = stat()
         guard lstat(findingURL.path,&findingInfo) == 0,findingInfo.st_mode & S_IFMT == S_IFREG,findingInfo.st_size <= 65536,let finding = HarnessBridge.smallData(findingURL),finding.count <= 65536 else { throw NewsCheckFailure(kind:.invalidResponse,message:"Codex did not return a complete news finding. Check again; the previous report is preserved.") }
+        if let snapshot { return try XNewsReview.decode(events:result.0,finding:finding,snapshot:snapshot,now:Date()) }
         return try decode(events:result.0,finding:finding,now:Date(),discovery:discovery)
     }
     static func readableResult(_ result:[String:Any])->Bool {
@@ -980,7 +1003,8 @@ enum LunaAPI {
 }
 extension Radar {
     var hasSavedAPIKey:Bool { lunaKey != nil }
-    var newsNeedsKeychain:Bool { newsBackend == .openAIAPI && keychainBusy }
+    var hasSavedXToken:Bool { xToken != nil }
+    var newsNeedsKeychain:Bool { newsBackend != .codexPlan && keychainBusy }
     var newsBackendReady:Bool { lunaReady }
     var newsBackendLabel:String { newsBackend.label }
     var newsNextCheckAt:Date {
@@ -988,7 +1012,11 @@ extension Radar {
         return NewsSchedule.nextCheck(now:now,lastAttempt:defaults.double(forKey:"newsLastAttempt_"+newsBackend.rawValue),lastSuccess:defaults.double(forKey:"newsLastSuccess_"+newsBackend.rawValue),interval:NewsSchedule.interval(defaults.integer(forKey:"lunaInterval")),retryAt:newsRetryAt,quotaAt:newsQuotaRetryAt)
     }
     func updateNewsReadiness() {
-        lunaReady = newsBackend == .codexPlan ? CodexConnection.executable != nil : lunaKey != nil
+        switch newsBackend {
+        case .codexPlan:lunaReady = CodexConnection.executable != nil
+        case .openAIAPI:lunaReady = lunaKey != nil
+        case .xAPI:lunaReady = xToken != nil && CodexConnection.executable != nil
+        }
 
     }
     func loadSavedAPIKey() {
@@ -1005,6 +1033,7 @@ extension Radar {
     }
     func cancelNewsCheck() {
         lunaGeneration += 1; lunaTask?.cancel(); lunaTask = nil; newsCLI?.cancel(); newsCLI = nil
+        xNewsOperation?.cancel(); xNewsOperation = nil
         newsRetryWork?.cancel(); newsRetryWork = nil; lunaBusy = false; newsCheckingStage = nil
     }
     func setNewsBackend(_ backend:NewsBackend) {
@@ -1014,7 +1043,9 @@ extension Radar {
         let quotaTime = UserDefaults.standard.double(forKey:"newsQuotaRetry_"+backend.rawValue)
         newsQuotaRetryAt = quotaTime.isFinite && quotaTime > 0 ? Date(timeIntervalSince1970:quotaTime) : nil
         updateNewsReadiness()
-        if backend == .openAIAPI,lunaKey == nil { loadSavedAPIKey() } else { checkLuna() }
+        if backend == .openAIAPI,lunaKey == nil { loadSavedAPIKey() }
+        else if backend == .xAPI,xToken == nil { loadSavedXToken() }
+        else { checkLuna() }
     }
     func connectLuna(_ key:String) {
         guard !keychainBusy else { return }
@@ -1046,12 +1077,69 @@ extension Radar {
             }
         }
     }
+    func loadSavedXToken() {
+        guard !keychainBusy else { return }; keychainBusy = true
+        let generation = lunaGeneration
+        keychainQueue.async { [weak self] in
+            let token = XNewsKeychain.read()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.xToken = token; self.keychainBusy = false; self.updateNewsReadiness()
+                if generation == self.lunaGeneration,self.newsBackend == .xAPI { self.checkLuna() }
+            }
+        }
+    }
+    func connectX(_ token:String) {
+        guard !keychainBusy else { return }
+        let clean = token.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard XNewsKeychain.validToken(clean) else { lunaError = "Paste the X app Bearer Token from console.x.com, without quotes or the word Bearer."; return }
+        cancelNewsCheck()
+        let generation = lunaGeneration
+        keychainBusy = true
+        keychainQueue.async {
+            let saved = (try? XNewsKeychain.save(clean)) != nil
+            DispatchQueue.main.async {
+                self.keychainBusy = false
+                guard saved else { self.lunaError = "The X token could not be saved to macOS Keychain."; return }
+                self.xToken = clean; self.updateNewsReadiness()
+                guard generation == self.lunaGeneration,self.newsBackend == .xAPI else { return }
+                self.lunaError = nil; self.newsFailure = nil; self.newsQuotaRetryAt = nil
+                UserDefaults.standard.removeObject(forKey:"newsQuotaRetry_xAPI"); UserDefaults.standard.removeObject(forKey:"newsHoldReason_xAPI")
+                UserDefaults.standard.set(true,forKey:"lunaEnabled"); self.checkLuna(force:true)
+            }
+        }
+    }
+    func disconnectX() {
+        guard !keychainBusy else { return }; keychainBusy = true
+        if newsBackend == .xAPI { cancelNewsCheck(); UserDefaults.standard.set(false,forKey:"lunaEnabled") }
+        keychainQueue.async {
+            let removed = XNewsKeychain.remove()
+            DispatchQueue.main.async {
+                self.keychainBusy = false
+                guard removed else { self.lunaError = "The saved X token could not be removed. Try again."; return }
+                self.xToken = nil; self.updateNewsReadiness(); self.lunaError = nil
+            }
+        }
+    }
+    func xBudgetChanged() {
+        guard newsBackend == .xAPI,newsFailure?.kind == .xBudget || UserDefaults.standard.string(forKey:"newsHoldReason_xAPI") == NewsCheckFailure.Kind.xBudget.rawValue else { return }
+        newsQuotaRetryAt = nil; lunaError = nil; newsFailure = nil
+        UserDefaults.standard.removeObject(forKey:"newsQuotaRetry_xAPI"); UserDefaults.standard.removeObject(forKey:"newsHoldReason_xAPI")
+        checkLuna()
+    }
+    var newsConnectionHint:String {
+        switch newsBackend {
+        case .codexPlan:return "Open Codex and sign in with ChatGPT, then check again."
+        case .openAIAPI:return "Add an OpenAI API key in News settings."
+        case .xAPI:return xToken == nil ? "Add your X app Bearer Token in News settings to read original posts directly." : "Open Codex and sign in with ChatGPT to review the X posts using your plan."
+        }
+    }
     func checkLuna(force:Bool = false) {
         updateNewsReadiness()
         guard !lunaBusy,!newsNeedsKeychain,force || UserDefaults.standard.bool(forKey:"lunaEnabled") else { return }
         guard lunaReady else {
             if force {
-                let failure = NewsCheckFailure(kind:newsBackend == .codexPlan ? .missing : .apiKey,message:newsBackend == .codexPlan ? "Install or open Codex and sign in with your ChatGPT account, then check news again." : "Add your OpenAI API key in news settings.")
+                let failure = NewsCheckFailure(kind:newsBackend == .codexPlan ? .missing : newsBackend == .xAPI ? .xToken : .apiKey,message:newsConnectionHint)
                 lunaError = failure.message; newsFailure = failure
             }
             return
@@ -1060,12 +1148,13 @@ extension Radar {
         if force { guard current.timeIntervalSince1970-defaults.double(forKey:"lunaLastAttempt") >= 60 else { return } }
         else { guard current >= newsNextCheckAt else { return } }
         if let quotaAt = newsQuotaRetryAt,current < quotaAt {
-            if force { lunaError = "News quota is waiting for its reset. Next check · \(dateLabel(quotaAt))." }
+            if force { lunaError = "News checks are paused until \(dateLabel(quotaAt)). Review the connection or quota message in News settings." }
             return
         }
         let discovery = LunaAPI.discoverySnapshot(now:current,candidates:news,feedCheckedAt:checkedNews,feedError:newsError)
         let backend = newsBackend; let generation = lunaGeneration
         newsRetryAt = nil; lunaBusy = true; lunaError = nil; newsFailure = nil
+        xNewsOperation = backend == .xAPI ? XNewsOperation() : nil
         performNewsAttempt(backend:backend,discovery:discovery,generation:generation,attempt:1)
     }
     private func reserveNewsAttempt(backend:NewsBackend,now:Date)->Bool {
@@ -1082,14 +1171,21 @@ extension Radar {
             finishNewsAttempt(nil,failure:.init(kind:.dailyCap,message:"Daily news-request cap reached. Checks resume at 00:00 UTC."),backend:backend,discovery:discovery,generation:generation,attempt:attempt); return
         }
         newsRetryAt = nil; newsCheckingStage = attempt == 1 ? "Searching current sources…" : "Retrying temporary failure (\(attempt)/\(NewsSchedule.maximumAttempts))…"
-        if backend == .codexPlan {
+        if backend == .codexPlan || backend == .xAPI {
             guard let executable = CodexConnection.executable else {
                 finishNewsAttempt(nil,failure:.init(kind:.missing,message:"Codex was not found. Open or update Codex, then reconnect."),backend:backend,discovery:discovery,generation:generation,attempt:attempt); return
             }
             let operation = NewsCLIProcess(); newsCLI = operation
+            let xOperation = xNewsOperation; let token = xToken
+            if backend == .xAPI { newsCheckingStage = "Connecting to X and reading original posts…" }
             DispatchQueue.global(qos:.utility).async {
                 var result:Verified?; var failure:NewsCheckFailure?
-                do { result = try CodexNews.review(executable:executable,discovery:discovery,operation:operation) }
+                do {
+                    if backend == .xAPI {
+                        guard let xOperation,let token else { throw NewsCheckFailure(kind:.xToken,message:"Add your X Bearer Token in News settings.") }
+                        result = try CodexNews.review(executable:executable,discovery:discovery,operation:operation,xSource:{ try xOperation.fetch(token:token) })
+                    } else { result = try CodexNews.review(executable:executable,discovery:discovery,operation:operation) }
+                }
                 catch { failure = error as? NewsCheckFailure ?? .init(kind:.invalidResponse,message:"The news check could not be completed. Check again; the previous report is preserved.") }
                 DispatchQueue.main.async { self.finishNewsAttempt(result,failure:failure,backend:backend,discovery:discovery,generation:generation,attempt:attempt) }
             }
@@ -1119,8 +1215,9 @@ extension Radar {
         guard generation == lunaGeneration,backend == newsBackend else { return }
         lunaTask = nil; newsCLI = nil
         if let result {
+            xNewsOperation = nil
             verified = result; lunaBusy = false; lunaError = nil; newsFailure = nil; newsRetryAt = nil; newsQuotaRetryAt = nil; newsCheckingStage = nil
-            UserDefaults.standard.set(result.checkedAt,forKey:"newsLastSuccess_"+backend.rawValue); UserDefaults.standard.removeObject(forKey:"newsQuotaRetry_"+backend.rawValue)
+            UserDefaults.standard.set(result.checkedAt,forKey:"newsLastSuccess_"+backend.rawValue); UserDefaults.standard.removeObject(forKey:"newsQuotaRetry_"+backend.rawValue); UserDefaults.standard.removeObject(forKey:"newsHoldReason_"+backend.rawValue)
             do { try HarnessBridge.writePrivate(JSONEncoder().encode(result),to:dataDir.appendingPathComponent("verified.json")); newsCacheWarning = nil }
             catch { newsCacheWarning = "News reviewed successfully, but its local cache could not be saved. This review lasts until the app closes." }
             return
@@ -1137,21 +1234,29 @@ extension Radar {
             return
         }
         lunaBusy = false; newsCheckingStage = nil; newsRetryWork = nil; newsRetryAt = nil
-        if failure.kind == .quota,backend == .codexPlan {
+        if failure.kind == .quota,backend != .openAIAPI {
             let freshLimits = checkedUsage.map { Date().timeIntervalSince($0) <= 180 && usageError == nil ? limits.filter { $0.id.hasPrefix("codex") } : [] } ?? []
             let date = failure.retryAt ?? NewsSchedule.quotaRetry(now:Date(),limits:freshLimits,interval:NewsSchedule.interval(UserDefaults.standard.integer(forKey:"lunaInterval")))
-            newsQuotaRetryAt = date; UserDefaults.standard.set(date.timeIntervalSince1970,forKey:"newsQuotaRetry_"+backend.rawValue)
+            newsQuotaRetryAt = date; UserDefaults.standard.set(date.timeIntervalSince1970,forKey:"newsQuotaRetry_"+backend.rawValue); UserDefaults.standard.set(failure.kind.rawValue,forKey:"newsHoldReason_"+backend.rawValue)
+        }
+        if [.xRateLimit,.xBudget].contains(failure.kind),let retry = failure.retryAt {
+            newsQuotaRetryAt = retry; UserDefaults.standard.set(retry.timeIntervalSince1970,forKey:"newsQuotaRetry_"+backend.rawValue)
+            UserDefaults.standard.set(failure.kind.rawValue,forKey:"newsHoldReason_"+backend.rawValue)
         }
         if failure.kind == .dailyCap {
             var calendar = Calendar(identifier:.gregorian); calendar.timeZone = TimeZone(secondsFromGMT:0)!
             newsRetryAt = calendar.startOfDay(for:Date()).addingTimeInterval(86400)
         }
+        xNewsOperation = nil
         if failure.retryable { lunaError = "\(failure.message) Automatic retries are finished; next check · \(dateLabel(newsNextCheckAt))." }
     }
 }
 struct LunaSettingsView: View {
     @ObservedObject var model: Radar
     @State var key = ""
+    @State var xKey = ""
+    @State var replaceXKey = false
+    @AppStorage("xDailyPostLimit") var xDailyPostLimit = 200
     @AppStorage("petMotion") var motion = true
     @AppStorage("lunaInterval") var interval = 30
     @AppStorage("lunaEnabled") var enabled = false
@@ -1164,11 +1269,44 @@ struct LunaSettingsView: View {
             Divider()
             Text("News monitor").font(.headline)
             Picker("News checker",selection:Binding(get:{model.newsBackend},set:{model.setNewsBackend($0)})) {
-                Text("Codex · use my plan").tag(NewsBackend.codexPlan)
+                Text("X API + Codex plan · direct posts").tag(NewsBackend.xAPI)
+                Text("Codex · web search only").tag(NewsBackend.codexPlan)
                 Text("OpenAI API · billed separately").tag(NewsBackend.openAIAPI)
-            }.help("Choose which account runs news reviews; switching never enables a fallback to the other account")
+            }.help("Choose the source and account for news reviews; no automatic fallback").disabled(model.keychainBusy)
+            .onChange(of:model.newsBackend) { _ in key = ""; xKey = ""; replaceXKey = false }
             Text("Checks @thsottiaux, @reach_vb, @OpenAI and @OpenAIDevs for extra reset announcements and corrections.").font(.callout).foregroundColor(.secondary)
-            if model.newsBackend == .codexPlan {
+            if model.newsBackend == .xAPI {
+                Text("Read originals directly from X").font(.subheadline.bold())
+                Text("The widget reads original post text from the four public timelines through X’s API. GPT-6 Luna reviews those posts using your Codex plan, with web search switched off.").font(.callout).foregroundColor(.secondary)
+                Text("1. Open X Developer Console and create an app.\n2. Add credits and set a spending limit in X.\n3. Copy the app’s Bearer Token and paste it below.").font(.callout)
+                HStack {
+                    Link("Open X Developer Console ↗",destination:URL(string:"https://console.x.com")!).help("Create an X developer app, manage credits and set your spending limit")
+                    Link("X pricing ↗",destination:URL(string:"https://docs.x.com/x-api/getting-started/pricing")!).help("Read X’s current API pricing before connecting")
+                }.font(.caption)
+                Text("X bills data access separately: currently $0.005 per post and $0.01 per account lookup. One check can read up to 100 posts ($0.50 before any X deduplication). Account IDs are cached for 24 hours. Codex analysis uses your plan quota.").font(.caption).foregroundColor(.secondary)
+                Picker("Daily X post-read cap",selection:$xDailyPostLimit) {
+                    ForEach(XNewsBudget.allowedPostLimits,id:\.self) { limit in Text("\(limit) posts · up to $"+String(format:"%.2f",Double(limit)*0.005)).tag(limit) }
+                }.help("Limit post reads reserved per UTC day; unsuccessful reads may keep a reservation").onChange(of:xDailyPostLimit) { _ in model.xBudgetChanged() }
+                Text("Post reads reserved today: \(XNewsBudget.postsReservedToday)/\(XNewsBudget.postLimit). Up to 12 account lookups ($0.12) are reserved separately per UTC day. Busy feeds may pause checks at this cap. X’s console spending limit controls your actual bill; prices can change.").font(.caption).foregroundColor(.secondary)
+                if model.keychainBusy {
+                    ProgressView("Waiting for macOS Keychain…").font(.caption)
+                } else {
+                    if model.hasSavedXToken {
+                        Label("X token saved in macOS Keychain",systemImage:"lock.fill").font(.caption).foregroundColor(mint)
+                        HStack {
+                            Button(replaceXKey ? "Cancel replacement" : "Replace token") { replaceXKey.toggle(); xKey = "" }.help("Replace a rejected or regenerated X Bearer Token")
+                            Button("Remove X token") { model.disconnectX(); xKey = "" }.help("Remove the token from Keychain and stop direct X checks")
+                        }
+                    }
+                    if !model.hasSavedXToken || replaceXKey {
+                        SecureField("X app Bearer Token",text:$xKey).textFieldStyle(.roundedBorder).help("Paste the app-only Bearer Token from X Developer Console; do not paste an API key or password")
+                        Button("Save token & enable paid X reads") { model.connectX(xKey); xKey = ""; replaceXKey = false }.buttonStyle(.borderedProminent).disabled(xKey.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).help("Save this token in macOS Keychain, enable scheduled X API reads and check now")
+                    }
+                }
+                Text("Your X token goes only to api.x.com. It is never sent to Codex, written to the project, or included in news prompts. No X password or API secret is needed.").font(.caption).foregroundColor(.secondary)
+                Button("Open Codex to sign in") { CodexConnection.openApp() }.help("Sign in to Codex with ChatGPT so news analysis uses your plan")
+                Text("Complete timeline checks cover the previous 48 hours of post text. Images, videos and linked pages are not reviewed. Access errors or an incomplete read stay yellow, with the reason shown below. Readable but ambiguous announcements also stay yellow.").font(.caption).foregroundColor(.secondary)
+            } else if model.newsBackend == .codexPlan {
                 Text("Uses your signed-in Codex CLI and counts toward your Codex plan usage. No separate OpenAI API key is needed.").font(.callout).foregroundColor(.secondary)
                 Label(model.newsBackendReady ? "Codex found on this Mac" : "Codex connection needed",systemImage:model.newsBackendReady ? "checkmark.circle" : "person.crop.circle.badge.exclamationmark").font(.caption).foregroundColor(model.newsBackendReady ? mint : .orange)
                 Text("Sign in to Codex with ChatGPT. Each check confirms the sign-in before running. Your projects and quota details are not included in the news prompt.").font(.caption).foregroundColor(.secondary)
@@ -1189,9 +1327,9 @@ struct LunaSettingsView: View {
                 }
                 Link("Get an API key ↗",destination:URL(string:"https://platform.openai.com/api-keys")!).font(.caption).help("Open OpenAI API key management")
             }
-            Toggle("Enable scheduled news checks",isOn:$enabled).help("Allow scheduled reviews using the selected checker").onChange(of:enabled) { value in if value { model.checkLuna() } }
+            Toggle("Enable scheduled news checks",isOn:$enabled).help("Allow scheduled reviews using the selected checker").onChange(of:enabled) { value in if value { model.checkLuna() } else { model.cancelNewsCheck() } }
             Picker("Check every",selection:$interval) { Text("30 minutes").tag(30); Text("1 hour").tag(60); Text("2 hours").tag(120) }.help("Choose how often news reviews run")
-            Text("At most 48 attempts per UTC day across both checkers. Temporary failures get up to two retries. Checks pause when the daily cap is reached; Codex checks also stop when your plan quota is exhausted.").font(.caption).foregroundColor(.secondary)
+            Text("At most 48 attempts per UTC day across all checkers. Temporary failures get up to two retries. Checks pause when the daily cap is reached; Plan-based checks also stop when your Codex quota is exhausted; direct X reads respect their own cap.").font(.caption).foregroundColor(.secondary)
             Text(model.newsLabel+" · "+model.newsReason).font(.caption).foregroundColor(model.petColor).fixedSize(horizontal:false,vertical:true)
             NewsBadgeRow(labels:model.newsBadges)
             Text(model.lunaCheckHint).font(.caption).foregroundColor(.secondary)
@@ -1237,19 +1375,20 @@ extension Radar {
            let t = v.scheduledAt, t > now.timeIntervalSince1970 - 180 { dates.append(Date(timeIntervalSince1970:t)) }
         return dates.min()
     }
-    var mood: ResetMood { .forNews(verified,now:now,failed:lunaError != nil) }
+    var mood: ResetMood { .forNews(verified,now:now,failed:lunaError != nil || (newsBackend == .xAPI && verified?.backendName != NewsBackend.xAPI.rawValue)) }
     var lunaCooldownRemaining: Int { max(0,Int(ceil(60-(now.timeIntervalSince1970-UserDefaults.standard.double(forKey:"lunaLastAttempt"))))) }
     var canCheckLuna: Bool { newsBackendReady && !lunaBusy && !newsNeedsKeychain && lunaCooldownRemaining == 0 }
     var lunaCheckHint: String {
         if lunaBusy { return newsCheckingStage ?? "Checking current sources…" }
         if newsNeedsKeychain { return "Waiting for macOS Keychain before checking current news." }
         if lunaCooldownRemaining > 0 { return "Retry available in \(lunaCooldownRemaining)s" }
-        guard newsBackendReady else { return newsBackend == .codexPlan ? "Open Codex and sign in with ChatGPT, then check again." : "Add an API key to use the OpenAI API checker." }
+        guard newsBackendReady else { return newsConnectionHint }
         guard UserDefaults.standard.bool(forKey:"lunaEnabled") else { return "Scheduled checks paused. A manual check is available." }
         if let retry = newsRetryAt { return "Automatic retry · \(dateLabel(max(retry,now)))" }
         return "Next scheduled check · \(dateLabel(max(newsNextCheckAt,now)))"
     }
     var newsReason: String {
+        if newsBackend == .xAPI,!newsBackendReady { return newsConnectionHint }
         if let v = verified,v.reportClassification == "reported" || v.reportClassification == "unclassified" {
             let context:String
             if v.reportClassification == "unclassified" { context = "Check again to classify this earlier report." }
@@ -1262,12 +1401,12 @@ extension Radar {
         if lunaBusy { return newsCheckingStage ?? "Checking the latest announcements and their original posts." }
         if let error = lunaError { return error }
         if let v = verified,v.isFresh(now) {
-            if mood == .green { return "The latest successful check found no current reset announcement." }
+            if mood == .green { return v.evidenceVersion == 5 ? "All four timelines were checked. No current reset announcement was found in their returned post text; media and linked pages were not reviewed." : "The latest successful check found no current reset announcement." }
             if mood == .red { return v.scheduledAt == nil ? "An explicit reset announcement was verified. No exact reset time was given; account completion is unconfirmed." : "An explicit reset announcement and its scheduled time were verified. Account completion is unconfirmed." }
             return v.timingNote.isEmpty ? "The latest report could not be verified against an accessible original post." : v.timingNote
         }
         if newsNeedsKeychain { return "Waiting for macOS Keychain before checking current news." }
-        if !newsBackendReady { return newsBackend == .codexPlan ? "Sign in to Codex with ChatGPT to check current announcements using your plan." : "Add an OpenAI API key in news settings to check current announcements." }
+        if !newsBackendReady { return newsConnectionHint }
         if !UserDefaults.standard.bool(forKey:"lunaEnabled") { return "Scheduled news checks are paused. Check now or enable them in news settings." }
         if verified != nil { return "The last source review is over two hours old. Check again for current reset news." }
         return "No source review has finished yet. Check current announcements now."
@@ -1283,20 +1422,21 @@ extension Radar {
             if lunaError != nil { return "NEWS CHECK FAILED" }
             if lunaBusy { return "CHECKING RESET NEWS" }
             if newsNeedsKeychain { return "WAITING FOR KEYCHAIN" }
-            if !newsBackendReady { return newsBackend == .codexPlan ? "CONNECT CODEX FOR NEWS" : "NEWS NEEDS API KEY" }
+            if !newsBackendReady { return newsBackend == .codexPlan ? "CONNECT CODEX FOR NEWS" : newsBackend == .xAPI ? "CONNECT X FOR NEWS" : "NEWS NEEDS API KEY" }
             if !UserDefaults.standard.bool(forKey:"lunaEnabled") { return "NEWS CHECKS PAUSED" }
             if let v = verified,!v.isFresh(now) { return "RESET NEWS STALE" }
-            if verified?.status == "verification unavailable" { return "SOURCE VERIFICATION BLOCKED" }
+            if verified?.status == "verification unavailable",verified?.evidenceVersion != 5 { return "SOURCE VERIFICATION BLOCKED" }
             return "RESET NEWS UNCERTAIN"
         }
     }
     var newsBadges:[String] {
         var badges = verified.map { [$0.verificationBadge] } ?? []
         if let v = verified,!v.isFresh(now) { badges.append("Review stale") }
+        if newsBackend == .xAPI,let v = verified,v.backendName != NewsBackend.xAPI.rawValue { badges.append("Previous checker’s result") }
         if lunaBusy { badges.append("Checking now") }
         else if lunaError != nil { badges.append("Latest check failed") }
         if newsNeedsKeychain { badges.append("Waiting for Keychain") }
-        else if !newsBackendReady { badges.append(newsBackend == .codexPlan ? "Codex connection needed" : "Needs API key") }
+        else if !newsBackendReady { badges.append(newsBackend == .codexPlan ? "Codex connection needed" : newsBackend == .xAPI ? "X connection needed" : "Needs API key") }
         else if !UserDefaults.standard.bool(forKey:"lunaEnabled") { badges.append("Checks paused") }
         return badges
     }
@@ -1577,7 +1717,7 @@ struct HarnessStackView:View {
                 Button("Connections") { connect(stack.priority.id) }.help("Connect your harnesses to local quota information")
                 Spacer()
                 Button(action:{model.refresh()}) { Image(systemName:"arrow.clockwise") }.help("Refresh Codex usage and feed")
-                Button(action:settings) { Image(systemName:"gearshape") }.help("Luna news settings")
+                Button(action:settings) { Image(systemName:"gearshape") }.help("News settings and X API connection")
             }.font(.system(size:11)).buttonStyle(.plain).padding(15)
         }.frame(width:494,height:stack.viewHeight-16)
             .background(Color(red:0.045,green:0.06,blue:0.08).opacity(0.98),in:RoundedRectangle(cornerRadius:23))
@@ -2743,6 +2883,8 @@ func testInstanceLock() throws {
     print("PASS: duplicate instance exclusion; lifetime lock release; symbolic-link refusal")
 }
 if CommandLine.arguments.contains("--self-test") {
+    try runXNewsTests()
+    try testXNewsReview()
     try testInstanceLock()
     try testSecurityBoundaries()
     try testHarnessConnections()

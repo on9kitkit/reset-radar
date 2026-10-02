@@ -8,7 +8,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parent.parent
 allowed = {
     '.gitignore', 'README.md', 'LICENSE', 'SECURITY.md', 'CHECKS.md',
-    'Sources/main.swift', 'Resources/Info.plist', 'Resources/Connection Guide.html',
+    'Sources/main.swift', 'Sources/XNews.swift', 'Sources/XReview.swift', 'Resources/Info.plist', 'Resources/Connection Guide.html',
     'scripts/build.sh', 'scripts/check-source.py', 'scripts/check-package.py',
     '.github/workflows/ci.yml', '.github/dependabot.yml',
     'docs/images/hero-stack.png', 'docs/images/mascot-gallery.png',
